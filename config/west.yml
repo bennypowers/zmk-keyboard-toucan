@@ -19,6 +19,6 @@ manifest:
       revision: toucan
     - name: zmk-rgbled-widget
       remote: caksoylar
-      revision: main
+      revision: c38c4b4
   self:
     path: config
