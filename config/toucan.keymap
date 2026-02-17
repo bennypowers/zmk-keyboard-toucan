@@ -20,14 +20,6 @@
         };
     };
 
-    conditional_layers {
-        compatible = "zmk,conditional-layers";
-        tri_layer {
-            if-layers = <SYM NAV>;
-            then-layer = <FN>;
-        };
-    };
-
     keymap {
         compatible = "zmk,keymap";
 
@@ -52,7 +44,7 @@
         };
 
         nav {
-            display-name = " NUM NAV";
+            display-name = "NUM NAV";
             bindings = <
                 &bootloader &trans  &kp N7  &kp N8  &kp N9  &trans       &kp HOME  &kp PG_DN  &kp PG_UP  &kp END    &kp PSCRN  &trans
                 &trans      &trans  &kp N4  &kp N5  &kp N6  &trans       &kp LEFT  &kp DOWN   &kp UP     &kp RIGHT  &trans     &trans
