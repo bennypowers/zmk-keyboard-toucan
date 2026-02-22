@@ -10,6 +10,10 @@ manifest:
       url-base: https://github.com/caksoylar
     - name: geeksville
       url-base: https://github.com/geeksville
+    - name: bennypowers
+      url-base: https://github.com/bennypowers
+    - name: halfdane
+      url-base: https://github.com/halfdane
   projects:
     - name: zmk
       remote: zmkfirmware
@@ -17,6 +21,12 @@ manifest:
     - name: cirque-input-module
       remote: geeksville
       revision: toucan
+    - name: zmk-input-gestures
+      remote: bennypowers
+      revision: main
+    - name: zmk-input-processors
+      remote: halfdane
+      revision: main
     - name: zmk-rgbled-widget
       remote: caksoylar
       revision: c38c4b4
