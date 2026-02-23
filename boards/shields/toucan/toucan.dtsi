@@ -114,7 +114,7 @@
         input-processors = <
             &zip_gestures
             &zip_absolute_to_relative
-            &zip_xy_scaler 450 100
+            &zip_xy_scaler 200 100
         >;
 
         /* SYM layer: full pad = scroll, circular scroll on rim */
@@ -135,7 +135,7 @@
             input-processors = <
                 &zip_gestures
                 &zip_absolute_to_relative
-                &zip_xy_scaler 450 100
+                &zip_xy_scaler 200 100
             >;
         };
     };
