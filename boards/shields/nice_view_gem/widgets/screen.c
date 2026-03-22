@@ -18,6 +18,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/endpoints.h>
 #include <zmk/keymap.h>
 #include <zmk/usb.h>
+#include <zmk/wpm.h>
 #include <zmk/split/central.h>
 
 #include "battery.h"
@@ -36,32 +37,36 @@ static void draw_screen(lv_obj_t *widget, lv_color_t cbuf[], const struct status
     lv_obj_t *canvas = lv_obj_get_child(widget, 0);
     fill_background(canvas);
 
-    draw_battery_status(canvas, state);
-    draw_battery_peripheral_status(canvas, state);
-    draw_character(canvas, state);
-    draw_layer_status(canvas, state);
     draw_output_status(canvas, state);
     draw_profile_status(canvas, state);
+    draw_character(canvas, state);
+    draw_battery_status(canvas, state);
 }
 
 /* ---- Animation timer ---- */
 
-#define WALK_ANIM_PERIOD_MS 400
+static lv_timer_t *anim_timer;
+
+static uint32_t walk_period_ms(uint8_t wpm) {
+    if (wpm > 80) return 150;
+    if (wpm > 30) return 300;
+    if (wpm > 0)  return 500;
+    return 400; /* charging fallback */
+}
 
 static void anim_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_screen *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
-        if (widget->state.charging) {
+        if (character_is_walking(&widget->state)) {
+            lv_timer_set_period(anim_timer, walk_period_ms(widget->state.wpm));
             draw_screen(widget->obj, widget->cbuf, &widget->state);
         }
     }
 }
 
-static lv_timer_t *anim_timer;
-
 static void ensure_anim_timer(void) {
     if (!anim_timer) {
-        anim_timer = lv_timer_create(anim_timer_cb, WALK_ANIM_PERIOD_MS, NULL);
+        anim_timer = lv_timer_create(anim_timer_cb, 400, NULL);
     }
 }
 
@@ -193,6 +198,30 @@ ZMK_SUBSCRIPTION(widget_output_status, zmk_usb_conn_state_changed);
 ZMK_SUBSCRIPTION(widget_output_status, zmk_ble_active_profile_changed);
 #endif
 
+/* WPM */
+
+struct wpm_status_state {
+    uint8_t wpm;
+};
+
+static void set_wpm_status(struct zmk_widget_screen *widget, struct wpm_status_state state) {
+    widget->state.wpm = state.wpm;
+    draw_screen(widget->obj, widget->cbuf, &widget->state);
+}
+
+static void wpm_status_update_cb(struct wpm_status_state state) {
+    struct zmk_widget_screen *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) { set_wpm_status(widget, state); }
+}
+
+static struct wpm_status_state wpm_status_get_state(const zmk_event_t *eh) {
+    return (struct wpm_status_state){.wpm = zmk_wpm_get_state()};
+}
+
+ZMK_DISPLAY_WIDGET_LISTENER(widget_wpm_status, struct wpm_status_state,
+                            wpm_status_update_cb, wpm_status_get_state)
+ZMK_SUBSCRIPTION(widget_wpm_status, zmk_wpm_state_changed);
+
 /* ---- Init ---- */
 
 int zmk_widget_screen_init(struct zmk_widget_screen *widget, lv_obj_t *parent) {
@@ -208,6 +237,7 @@ int zmk_widget_screen_init(struct zmk_widget_screen *widget, lv_obj_t *parent) {
     widget_battery_peripheral_status_init();
     widget_layer_status_init();
     widget_output_status_init();
+    widget_wpm_status_init();
 
     ensure_anim_timer();
 

@@ -3,9 +3,13 @@
 #include "../assets/sprites.h"
 
 #define SPRITE_X ((SCREEN_WIDTH - SPRITE_W) / 2)
-#define SPRITE_Y 28
+#define SPRITE_Y 22
 
 static uint8_t walk_frame;
+
+bool character_is_walking(const struct status_state *state) {
+    return state->charging || state->wpm > 0;
+}
 
 void draw_character(lv_obj_t *canvas, const struct status_state *state) {
     lv_draw_img_dsc_t img_dsc;
@@ -17,7 +21,7 @@ void draw_character(lv_obj_t *canvas, const struct status_state *state) {
     }
 
     const lv_img_dsc_t *sprite;
-    if (state->charging) {
+    if (character_is_walking(state)) {
         sprite = layer_sprites[idx][walk_frame % 2];
         walk_frame++;
     } else {

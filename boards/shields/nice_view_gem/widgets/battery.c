@@ -1,37 +1,40 @@
 #include <zephyr/kernel.h>
 #include "battery.h"
 #include "../assets/custom_fonts.h"
+#include "../assets/eb_digits.h"
 
-LV_IMG_DECLARE(bolt);
-LV_IMG_DECLARE(l_battery_100);
-LV_IMG_DECLARE(l_battery_90);
-LV_IMG_DECLARE(l_battery_75);
-LV_IMG_DECLARE(l_battery_50);
-LV_IMG_DECLARE(l_battery_25);
-LV_IMG_DECLARE(l_battery_10);
+#define L_X 2
+#define R_X 76
+#define BATTERY_Y 140
 
+static void draw_hp_counter(lv_obj_t *canvas, int x, int y, uint8_t value) {
+    lv_draw_label_dsc_t label_dsc;
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &quinquefive_8, LV_TEXT_ALIGN_LEFT);
+    lv_canvas_draw_text(canvas, x, y + 8, 16, &label_dsc, "HP");
 
-static void draw_level(lv_obj_t *canvas, const struct status_state *state) {
-    lv_draw_img_dsc_t img_dsc_l;
-    lv_draw_img_dsc_init(&img_dsc_l);
+    lv_draw_img_dsc_t img_dsc;
+    lv_draw_img_dsc_init(&img_dsc);
 
-    uint8_t level = state->battery;
-    if (level > 90) {
-        lv_canvas_draw_img(canvas, 8, 10, &l_battery_100, &img_dsc_l);
-    } else if (level > 75) {
-        lv_canvas_draw_img(canvas, 8, 10, &l_battery_90, &img_dsc_l);
-    } else if (level > 50) {
-        lv_canvas_draw_img(canvas, 8, 10, &l_battery_75, &img_dsc_l);
-    } else if (level > 25) {
-        lv_canvas_draw_img(canvas, 8, 10, &l_battery_50, &img_dsc_l);
-    } else if (level > 10) {
-        lv_canvas_draw_img(canvas, 8, 10, &l_battery_25, &img_dsc_l);
-    } else if (level > 1) {
-        lv_canvas_draw_img(canvas, 8, 10, &l_battery_10, &img_dsc_l);
+    int dx = x + 16;
+
+    uint8_t hundreds = value / 100;
+    uint8_t tens = (value % 100) / 10;
+    uint8_t ones = value % 10;
+
+    if (hundreds > 0) {
+        lv_canvas_draw_img(canvas, dx, y, eb_digits[hundreds], &img_dsc);
+        dx += EB_DIGIT_W;
     }
 
+    if (hundreds > 0 || tens > 0) {
+        lv_canvas_draw_img(canvas, dx, y, eb_digits[tens], &img_dsc);
+        dx += EB_DIGIT_W;
+    }
+
+    lv_canvas_draw_img(canvas, dx, y, eb_digits[ones], &img_dsc);
 }
 
 void draw_battery_status(lv_obj_t *canvas, const struct status_state *state) {
-    draw_level(canvas, state);
+    draw_hp_counter(canvas, L_X, BATTERY_Y, state->battery);
+    draw_hp_counter(canvas, R_X, BATTERY_Y, state->battery_p);
 }

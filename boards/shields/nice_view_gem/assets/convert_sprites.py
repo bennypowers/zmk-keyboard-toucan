@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Convert EarthBound party sprite GIFs to LVGL 1-bit indexed C arrays.
+"""Convert EarthBound assets to LVGL 1-bit indexed C arrays.
 
-Source GIFs go in src/ alongside this script. Output is sprites.c and sprites.h
-in the same directory (assets/).
+Generates:
+  - sprites.c/h: Party member sprites (stand + walk per character)
+  - eb_digits.c/h: Rolling counter digit font (0-9, 8x12 each)
 
-Each character has one source GIF. The walk animation alternates between
-the original and its horizontal flip.
-
-Uses Floyd-Steinberg dithering at display resolution for tonal detail.
+Source files go in src/ alongside this script.
 
 Usage: python3 convert_sprites.py
 """
@@ -16,19 +14,26 @@ from PIL import Image, ImageOps
 import os
 
 SCALE = 4
+DIGIT_SCALE = 2  # digits are smaller, scale 2x (-> 16x24 per digit)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(SCRIPT_DIR, "src")
 OUT_DIR = SCRIPT_DIR
 
-# layer index -> character name (matches keymap layer order)
+# --- Character sprites ---
+
 CHARACTERS = ["ness", "paula", "jeff", "poo"]
 
-# Characters with a separate walk frame (hat asymmetry, etc.)
-# Others auto-generate walk by flipping the stand frame.
 WALK_OVERRIDES = {
     "ness": "ness-walk.gif",
 }
+
+# --- Digit font ---
+
+NUMBERS_FILE = "numbers.png"
+DIGIT_W, DIGIT_H = 8, 12
+DIGIT_STRIDE_X, DIGIT_STRIDE_Y = 32, 16
+DIGITS_PER_ROW = 4
 
 
 def gif_to_mono(path, scale, flip=False):
@@ -41,7 +46,7 @@ def gif_to_mono(path, scale, flip=False):
     scaled_a = a.resize((a.width * scale, a.height * scale), Image.NEAREST)
 
     gray = scaled.convert("L")
-    mono_pil = gray.convert("1")  # Floyd-Steinberg dithering
+    mono_pil = gray.convert("1")
 
     w, h = scaled.size
     mono = []
@@ -54,6 +59,26 @@ def gif_to_mono(path, scale, flip=False):
                 row.append(0 if mono_pil.getpixel((x, y)) else 1)
         mono.append(row)
     return mono, w, h
+
+
+def crop_to_mono(img, x, y, w, h, bg, scale):
+    """Extract a tile, remove bg, threshold convert, and scale."""
+    crop = img.crop((x, y, x + w, y + h))
+    sw, sh = w * scale, h * scale
+    scaled = crop.resize((sw, sh), Image.NEAREST)
+
+    mono = []
+    for py in range(sh):
+        row = []
+        for px in range(sw):
+            r, g, b, a = scaled.getpixel((px, py))
+            if (r, g, b) == bg or a < 128:
+                row.append(0)
+            else:
+                lum = 0.299 * r + 0.587 * g + 0.114 * b
+                row.append(1 if lum < 140 else 0)
+        mono.append(row)
+    return mono, sw, sh
 
 
 def mono_to_lvgl_c(name, mono, w, h):
@@ -102,7 +127,8 @@ def save_preview(name, mono, w, h):
     preview.save(os.path.join(SRC_DIR, f"{name}_preview.png"))
 
 
-def main():
+def generate_sprites():
+    """Generate character sprite C arrays."""
     c_parts = ['#include <lvgl.h>', '#include "sprites.h"', ""]
     sprite_w = sprite_h = 0
     all_names = []
@@ -110,7 +136,6 @@ def main():
     for char in CHARACTERS:
         stand_path = os.path.join(SRC_DIR, f"{char}.gif")
 
-        # Stand frame
         name = f"{char}_stand"
         mono, w, h = gif_to_mono(stand_path, SCALE)
         c_parts.append(mono_to_lvgl_c(name, mono, w, h))
@@ -120,7 +145,6 @@ def main():
         all_names.append(name)
         print(f"  {name} ({char}.gif): {w}x{h}")
 
-        # Walk frame: use override file or flip the stand frame
         name = f"{char}_walk"
         if char in WALK_OVERRIDES:
             walk_path = os.path.join(SRC_DIR, WALK_OVERRIDES[char])
@@ -166,6 +190,66 @@ extern const lv_img_dsc_t *layer_sprites[NUM_LAYER_SPRITES][2];
         )
 
     print(f"\nGenerated sprites.c/h ({sprite_w}x{sprite_h})")
+
+
+def generate_digits():
+    """Generate rolling counter digit font C arrays."""
+    numbers_path = os.path.join(SRC_DIR, NUMBERS_FILE)
+    img = Image.open(numbers_path).convert("RGBA")
+    bg = img.getpixel((0, 0))[:3]
+
+    dw = DIGIT_W * DIGIT_SCALE
+    dh = DIGIT_H * DIGIT_SCALE
+
+    c_parts = ['#include <lvgl.h>', '#include "eb_digits.h"', ""]
+    all_names = []
+
+    for d in range(10):
+        col = d % DIGITS_PER_ROW
+        row = d // DIGITS_PER_ROW
+        x = col * DIGIT_STRIDE_X
+        y = row * DIGIT_STRIDE_Y
+
+        name = f"eb_digit_{d}"
+        mono, w, h = crop_to_mono(img, x, y, DIGIT_W, DIGIT_H, bg, DIGIT_SCALE)
+        c_parts.append(mono_to_lvgl_c(name, mono, w, h))
+        c_parts.append("")
+        all_names.append(name)
+        print(f"  {name}: {w}x{h}")
+
+    c_parts.append("const lv_img_dsc_t *eb_digits[10] = {")
+    for d in range(10):
+        c_parts.append(f"    &eb_digit_{d},")
+    c_parts.append("};")
+    c_parts.append("")
+
+    with open(os.path.join(OUT_DIR, "eb_digits.c"), "w") as f:
+        f.write("\n".join(c_parts) + "\n")
+
+    declares = "\n".join(f"LV_IMG_DECLARE({n});" for n in all_names)
+    with open(os.path.join(OUT_DIR, "eb_digits.h"), "w") as f:
+        f.write(
+            f"""#pragma once
+
+#include <lvgl.h>
+
+{declares}
+
+#define EB_DIGIT_W {dw}
+#define EB_DIGIT_H {dh}
+
+extern const lv_img_dsc_t *eb_digits[10];
+"""
+        )
+
+    print(f"\nGenerated eb_digits.c/h ({dw}x{dh} per digit)")
+
+
+def main():
+    print("=== Character sprites ===")
+    generate_sprites()
+    print("\n=== Rolling counter digits ===")
+    generate_digits()
 
 
 if __name__ == "__main__":
