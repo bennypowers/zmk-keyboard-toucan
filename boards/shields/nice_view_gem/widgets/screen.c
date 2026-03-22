@@ -22,45 +22,60 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "battery.h"
 #include "battery_peripheral.h"
+#include "character.h"
 #include "layer.h"
 #include "output.h"
 #include "profile.h"
 #include "screen.h"
 
-struct connection_status_state {
-    bool connected;
-};
-
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
-/**
- * Draw buffers
- **/
+/* ---- Layout ---- */
 
-static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
+static void draw_screen(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, 0);
     fill_background(canvas);
 
-    // Draw widgets
-    draw_output_status(canvas, state);
-    draw_layer_status(canvas, state);
-    draw_profile_status(canvas, state);
     draw_battery_status(canvas, state);
     draw_battery_peripheral_status(canvas, state);
+    draw_character(canvas, state);
+    draw_layer_status(canvas, state);
+    draw_output_status(canvas, state);
+    draw_profile_status(canvas, state);
 }
 
-/**
- * Battery status
- **/
-// L
+/* ---- Animation timer ---- */
+
+#define WALK_ANIM_PERIOD_MS 400
+
+static void anim_timer_cb(lv_timer_t *timer) {
+    struct zmk_widget_screen *widget;
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        if (widget->state.charging) {
+            draw_screen(widget->obj, widget->cbuf, &widget->state);
+        }
+    }
+}
+
+static lv_timer_t *anim_timer;
+
+static void ensure_anim_timer(void) {
+    if (!anim_timer) {
+        anim_timer = lv_timer_create(anim_timer_cb, WALK_ANIM_PERIOD_MS, NULL);
+    }
+}
+
+/* ---- Event handlers ---- */
+
+/* Battery (central) */
+
 static void set_battery_status(struct zmk_widget_screen *widget,
                                struct battery_status_state state) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     widget->state.charging = state.usb_present;
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
     widget->state.battery = state.level;
-
-    draw_top(widget->obj, widget->cbuf, &widget->state);
+    draw_screen(widget->obj, widget->cbuf, &widget->state);
 }
 
 static void battery_status_update_cb(struct battery_status_state state) {
@@ -70,67 +85,64 @@ static void battery_status_update_cb(struct battery_status_state state) {
 
 static struct battery_status_state battery_status_get_state(const zmk_event_t *eh) {
     const struct zmk_battery_state_changed *ev = as_zmk_battery_state_changed(eh);
-
     return (struct battery_status_state){
         .level = (ev != NULL) ? ev->state_of_charge : zmk_battery_state_of_charge(),
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
         .usb_present = zmk_usb_is_powered(),
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
     };
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_status, struct battery_status_state,
                             battery_status_update_cb, battery_status_get_state);
-
 ZMK_SUBSCRIPTION(widget_battery_status, zmk_battery_state_changed);
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
 ZMK_SUBSCRIPTION(widget_battery_status, zmk_usb_conn_state_changed);
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
 
-// R
+/* Battery (peripheral) */
+
 static void set_battery_peripheral_status(struct zmk_widget_screen *widget,
-                               struct battery_peripheral_status_state state) {
+                                          struct battery_peripheral_status_state state) {
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     widget->state.charging_p = state.usb_present;
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
-
+#endif
     uint8_t level;
     zmk_split_central_get_peripheral_battery_level(0, &level);
-
     widget->state.battery_p = level;
-    draw_top(widget->obj, widget->cbuf, &widget->state);
+    draw_screen(widget->obj, widget->cbuf, &widget->state);
 }
 
 static void battery_peripheral_status_update_cb(struct battery_peripheral_status_state state) {
     struct zmk_widget_screen *widget;
-
-    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) { set_battery_peripheral_status(widget, state); }
+    SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        set_battery_peripheral_status(widget, state);
+    }
 }
 
-static struct battery_peripheral_status_state battery_peripheral_status_get_state(const zmk_event_t *eh) {
-    const struct zmk_peripheral_battery_state_changed *ev = as_zmk_peripheral_battery_state_changed(eh);
-
-
+static struct battery_peripheral_status_state
+battery_peripheral_status_get_state(const zmk_event_t *eh) {
+    const struct zmk_peripheral_battery_state_changed *ev =
+        as_zmk_peripheral_battery_state_changed(eh);
     return (struct battery_peripheral_status_state){
         .level = ev->state_of_charge,
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
         .usb_present = zmk_usb_is_powered(),
-#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+#endif
     };
 }
 
-ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_peripheral_status, struct battery_peripheral_status_state,
-                            battery_peripheral_status_update_cb, battery_peripheral_status_get_state);
-
+ZMK_DISPLAY_WIDGET_LISTENER(widget_battery_peripheral_status,
+                            struct battery_peripheral_status_state,
+                            battery_peripheral_status_update_cb,
+                            battery_peripheral_status_get_state);
 ZMK_SUBSCRIPTION(widget_battery_peripheral_status, zmk_peripheral_battery_state_changed);
 
-/**
- * Layer status
- **/
+/* Layer */
 
 static void set_layer_status(struct zmk_widget_screen *widget, struct layer_status_state state) {
     widget->state.layer_index = zmk_keymap_highest_layer_active();
-    draw_top(widget->obj, widget->cbuf3, &widget->state);
+    draw_screen(widget->obj, widget->cbuf3, &widget->state);
 }
 
 static void layer_status_update_cb(struct layer_status_state state) {
@@ -139,20 +151,14 @@ static void layer_status_update_cb(struct layer_status_state state) {
 }
 
 static struct layer_status_state layer_status_get_state(const zmk_event_t *eh) {
-    uint8_t index = zmk_keymap_highest_layer_active();
-    return (struct layer_status_state) {
-        .index = index
-    };
+    return (struct layer_status_state){.index = zmk_keymap_highest_layer_active()};
 }
 
-ZMK_DISPLAY_WIDGET_LISTENER(widget_layer_status, struct layer_status_state, layer_status_update_cb,
-                            layer_status_get_state)
-
+ZMK_DISPLAY_WIDGET_LISTENER(widget_layer_status, struct layer_status_state,
+                            layer_status_update_cb, layer_status_get_state)
 ZMK_SUBSCRIPTION(widget_layer_status, zmk_layer_state_changed);
 
-/**
- * Output status
- **/
+/* Output / BLE */
 
 static void set_output_status(struct zmk_widget_screen *widget,
                               const struct output_status_state *state) {
@@ -160,8 +166,7 @@ static void set_output_status(struct zmk_widget_screen *widget,
     widget->state.active_profile_index = state->active_profile_index;
     widget->state.active_profile_connected = state->active_profile_connected;
     widget->state.active_profile_bonded = state->active_profile_bonded;
-
-    draw_top(widget->obj, widget->cbuf, &widget->state);
+    draw_screen(widget->obj, widget->cbuf, &widget->state);
 }
 
 static void output_status_update_cb(struct output_status_state state) {
@@ -181,7 +186,6 @@ static struct output_status_state output_status_get_state(const zmk_event_t *_eh
 ZMK_DISPLAY_WIDGET_LISTENER(widget_output_status, struct output_status_state,
                             output_status_update_cb, output_status_get_state)
 ZMK_SUBSCRIPTION(widget_output_status, zmk_endpoint_changed);
-
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
 ZMK_SUBSCRIPTION(widget_output_status, zmk_usb_conn_state_changed);
 #endif
@@ -189,9 +193,7 @@ ZMK_SUBSCRIPTION(widget_output_status, zmk_usb_conn_state_changed);
 ZMK_SUBSCRIPTION(widget_output_status, zmk_ble_active_profile_changed);
 #endif
 
-/**
- * Initialization
- **/
+/* ---- Init ---- */
 
 int zmk_widget_screen_init(struct zmk_widget_screen *widget, lv_obj_t *parent) {
     widget->obj = lv_obj_create(parent);
@@ -207,8 +209,9 @@ int zmk_widget_screen_init(struct zmk_widget_screen *widget, lv_obj_t *parent) {
     widget_layer_status_init();
     widget_output_status_init();
 
+    ensure_anim_timer();
+
     return 0;
 }
 
 lv_obj_t *zmk_widget_screen_obj(struct zmk_widget_screen *widget) { return widget->obj; }
-
