@@ -28,6 +28,12 @@ WALK_OVERRIDES = {
     "ness": "ness-walk.gif",
 }
 
+# Charging sprites: robot versions
+# Base layer (ness): ness-robot stand + ness-robot-walk
+# Other layers: robot stand + robot flipped
+CHARGE_NESS = ("ness-robot.gif", "ness-robot-walk.gif")
+CHARGE_OTHER = "robot.gif"  # flipped for walk frame
+
 # --- Digit font ---
 
 NUMBERS_FILE = "numbers.png"
@@ -170,12 +176,49 @@ def generate_sprites():
     all_names.append(name)
     print(f"  {name} (ness-sleep.gif): {w}x{h}")
 
+    # Charging sprites: robot versions
+    # Ness robot: stand + walk
+    for name, src, flip in [
+        ("ness_robot_stand", CHARGE_NESS[0], False),
+        ("ness_robot_walk", CHARGE_NESS[1], False),
+    ]:
+        mono, w, h = gif_to_mono(os.path.join(SRC_DIR, src), SCALE, flip=flip)
+        c_parts.append(mono_to_lvgl_c(name, mono, w, h))
+        c_parts.append("")
+        save_preview(name, mono, w, h)
+        all_names.append(name)
+        print(f"  {name} ({src}): {w}x{h}")
+
+    # Generic robot: stand + flipped walk
+    for name, flip in [("robot_stand", False), ("robot_walk", True)]:
+        mono, w, h = gif_to_mono(
+            os.path.join(SRC_DIR, CHARGE_OTHER), SCALE, flip=flip
+        )
+        c_parts.append(mono_to_lvgl_c(name, mono, w, h))
+        c_parts.append("")
+        save_preview(name, mono, w, h)
+        all_names.append(name)
+        label = CHARGE_OTHER + (" (flipped)" if flip else "")
+        print(f"  {name} ({label}): {w}x{h}")
+
+    # Layer sprites: [stand, walk]
     c_parts.append("/* Per-layer sprite pairs: [stand, walk] */")
     c_parts.append(
         "const lv_img_dsc_t *layer_sprites[NUM_LAYER_SPRITES][2] = {"
     )
     for char in CHARACTERS:
         c_parts.append(f"    {{ &{char}_stand, &{char}_walk }},")
+    c_parts.append("};")
+    c_parts.append("")
+
+    # Charging sprites: [stand, walk] per layer
+    c_parts.append("/* Per-layer charging sprite pairs: [stand, walk] */")
+    c_parts.append(
+        "const lv_img_dsc_t *charge_sprites[NUM_LAYER_SPRITES][2] = {"
+    )
+    c_parts.append("    { &ness_robot_stand, &ness_robot_walk },")
+    for _ in CHARACTERS[1:]:
+        c_parts.append("    { &robot_stand, &robot_walk },")
     c_parts.append("};")
     c_parts.append("")
 
@@ -197,6 +240,7 @@ def generate_sprites():
 
 #define NUM_LAYER_SPRITES {len(CHARACTERS)}
 extern const lv_img_dsc_t *layer_sprites[NUM_LAYER_SPRITES][2];
+extern const lv_img_dsc_t *charge_sprites[NUM_LAYER_SPRITES][2];
 """
         )
 

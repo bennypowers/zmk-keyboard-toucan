@@ -58,7 +58,7 @@ static uint32_t walk_period_ms(uint8_t wpm) {
     if (wpm > 80) return 150;
     if (wpm > 30) return 300;
     if (wpm > 0)  return 500;
-    return 400; /* charging fallback */
+    return 400; /* charging robot animation */
 }
 
 #define ROLL_TICK_MS 67  /* EB updates every 4 frames at 60fps */
@@ -70,12 +70,13 @@ static void anim_timer_cb(lv_timer_t *timer) {
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
         bool needs_redraw = false;
 
-        /* Walk animation: only advance every N roll ticks */
+        /* Character animation: walk driven by WPM only */
+        bool animating = character_is_walking(&widget->state);
         uint32_t walk_ms = walk_period_ms(widget->state.wpm);
         uint32_t walk_interval = walk_ms / ROLL_TICK_MS;
         if (walk_interval < 1) walk_interval = 1;
 
-        if (character_is_walking(&widget->state)) {
+        if (animating) {
             walk_tick_counter++;
             if (walk_tick_counter >= walk_interval) {
                 walk_tick_counter = 0;

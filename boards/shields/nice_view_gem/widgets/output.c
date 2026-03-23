@@ -2,8 +2,8 @@
 #include "output.h"
 #include "../assets/custom_fonts.h"
 
-#define STATUS_X 2
-#define STATUS_Y 2
+#define STATUS_X 6
+#define STATUS_Y 6
 
 #if !IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
 
