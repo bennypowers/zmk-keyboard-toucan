@@ -29,6 +29,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include "output.h"
 #include "profile.h"
 #include "screen.h"
+#include "shutter.h"
 #include "sleep.h"
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
@@ -48,6 +49,9 @@ static void draw_screen(lv_obj_t *widget, lv_color_t cbuf[], const struct status
     draw_profile_status(canvas, state);
     draw_character(canvas, state);
     draw_battery_status(canvas, state);
+
+    /* Shutter overlay draws on top of everything */
+    draw_shutter_overlay(canvas);
 }
 
 /* ---- Animation timer ---- */
@@ -89,6 +93,12 @@ static void anim_timer_cb(lv_timer_t *timer) {
         /* Roll battery digits toward actual values */
         battery_roll_tick(widget->state.battery, widget->state.battery_p);
         if (battery_rolling_active()) {
+            needs_redraw = true;
+        }
+
+        /* Camera shutter animation */
+        if (is_shutter_active()) {
+            shutter_tick();
             needs_redraw = true;
         }
 

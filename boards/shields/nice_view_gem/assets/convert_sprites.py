@@ -376,11 +376,97 @@ extern const lv_img_dsc_t *eb_roll[10][{tiles_per_transition}];
     print(f"\nGenerated eb_digits.c/h ({dw}x{dh}, {tiles_per_transition} frames/digit)")
 
 
+def generate_shutter():
+    """Generate camera shutter iris animation frames (144x168 masks)."""
+    shutter_path = os.path.join(SRC_DIR, "camera-shutter.png")
+    img = Image.open(shutter_path).convert("RGBA")
+
+    fw, fh = img.width // 3, img.height // 2
+    num_frames = 6
+    screen_w, screen_h = 144, 168
+
+    c_parts = ['#include <lvgl.h>', '#include "shutter.h"', ""]
+    all_names = []
+
+    for i in range(num_frames):
+        col = i % 3
+        row = i // 3
+        frame = img.crop((col * fw, row * fh, (col + 1) * fw, (row + 1) * fh))
+
+        # Scale preserving aspect ratio (fit height), then center-crop width
+        scale = screen_h / fh
+        scaled_w = int(fw * scale)
+        scaled = frame.resize((scaled_w, screen_h), Image.NEAREST)
+        # Center crop to screen width
+        crop_x = (scaled_w - screen_w) // 2
+        cropped = scaled.crop((crop_x, 0, crop_x + screen_w, screen_h))
+
+        # Remap to 3 values: transparent, white (fin edges), black (blade)
+        for py in range(screen_h):
+            for px in range(screen_w):
+                r, g, b, a = cropped.getpixel((px, py))
+                if a < 128:
+                    cropped.putpixel((px, py), (0, 0, 0, 0))
+                elif r > 80:
+                    cropped.putpixel((px, py), (255, 255, 255, 255))
+                else:
+                    cropped.putpixel((px, py), (0, 0, 0, 255))
+
+        # Dither at display resolution for the white blade edge lines
+        _, _, _, alpha = cropped.split()
+        gray = cropped.convert("L")
+        mono_pil = gray.convert("1")
+
+        mono = []
+        for py in range(screen_h):
+            row_data = []
+            for px in range(screen_w):
+                if alpha.getpixel((px, py)) < 128:
+                    row_data.append(0)
+                else:
+                    row_data.append(0 if mono_pil.getpixel((px, py)) else 1)
+            mono.append(row_data)
+
+        name = f"shutter_frame_{i}"
+        c_parts.append(mono_to_lvgl_c(name, mono, screen_w, screen_h))
+        c_parts.append("")
+        save_preview(name, mono, screen_w, screen_h)
+        all_names.append(name)
+        print(f"  {name}: {screen_w}x{screen_h}")
+
+    c_parts.append(f"const lv_img_dsc_t *shutter_frames[{num_frames}] = {{")
+    for name in all_names:
+        c_parts.append(f"    &{name},")
+    c_parts.append("};")
+    c_parts.append("")
+
+    with open(os.path.join(OUT_DIR, "shutter.c"), "w") as f:
+        f.write("\n".join(c_parts) + "\n")
+
+    declares = "\n".join(f"LV_IMG_DECLARE({n});" for n in all_names)
+    with open(os.path.join(OUT_DIR, "shutter.h"), "w") as f:
+        f.write(
+            f"""#pragma once
+
+#include <lvgl.h>
+
+{declares}
+
+#define SHUTTER_FRAMES {num_frames}
+extern const lv_img_dsc_t *shutter_frames[{num_frames}];
+"""
+        )
+
+    print(f"\nGenerated shutter.c/h ({num_frames} frames at {screen_w}x{screen_h})")
+
+
 def main():
     print("=== Character sprites ===")
     generate_sprites()
     print("\n=== Rolling counter digits ===")
     generate_digits()
+    print("\n=== Camera shutter ===")
+    generate_shutter()
 
 
 if __name__ == "__main__":
