@@ -161,6 +161,15 @@ def generate_sprites():
         all_names.append(name)
         print(f"  {name} ({label}): {w}x{h}")
 
+    # Sleep sprite (Ness in pyjamas)
+    name = "ness_sleep"
+    mono, w, h = gif_to_mono(os.path.join(SRC_DIR, "ness-sleep.gif"), SCALE)
+    c_parts.append(mono_to_lvgl_c(name, mono, w, h))
+    c_parts.append("")
+    save_preview(name, mono, w, h)
+    all_names.append(name)
+    print(f"  {name} (ness-sleep.gif): {w}x{h}")
+
     c_parts.append("/* Per-layer sprite pairs: [stand, walk] */")
     c_parts.append(
         "const lv_img_dsc_t *layer_sprites[NUM_LAYER_SPRITES][2] = {"
@@ -195,7 +204,7 @@ extern const lv_img_dsc_t *layer_sprites[NUM_LAYER_SPRITES][2];
 
 
 def generate_digits():
-    """Generate rolling counter digit font C arrays."""
+    """Generate rolling counter digit font C arrays with dithered shading."""
     numbers_path = os.path.join(SRC_DIR, NUMBERS_FILE)
     img = Image.open(numbers_path).convert("RGBA")
     bg = img.getpixel((0, 0))[:3]
@@ -212,12 +221,39 @@ def generate_digits():
         x = col * DIGIT_STRIDE_X
         y = row * DIGIT_STRIDE_Y
 
+        crop = img.crop((x, y, x + DIGIT_W, y + DIGIT_H))
+        # BG is (240,240,240) white. Make it transparent.
+        # Keep all other colors for dithering.
+        for py in range(crop.height):
+            for px in range(crop.width):
+                r, g, b, a = crop.getpixel((px, py))
+                if r > 220 and g > 220 and b > 220:
+                    crop.putpixel((px, py), (255, 255, 255, 0))
+
+        _, _, _, alpha = crop.split()
+        scaled = crop.resize((dw, dh), Image.NEAREST)
+        scaled_a = alpha.resize((dw, dh), Image.NEAREST)
+
+        # Dither at display resolution
+        gray = scaled.convert("L")
+        mono_pil = gray.convert("1")
+
         name = f"eb_digit_{d}"
-        mono, w, h = crop_to_mono(img, x, y, DIGIT_W, DIGIT_H, bg, DIGIT_SCALE)
-        c_parts.append(mono_to_lvgl_c(name, mono, w, h))
+        mono = []
+        for py in range(dh):
+            row_data = []
+            for px in range(dw):
+                if scaled_a.getpixel((px, py)) < 128:
+                    row_data.append(0)
+                else:
+                    row_data.append(0 if mono_pil.getpixel((px, py)) else 1)
+            mono.append(row_data)
+
+        c_parts.append(mono_to_lvgl_c(name, mono, dw, dh))
         c_parts.append("")
+        save_preview(name, mono, dw, dh)
         all_names.append(name)
-        print(f"  {name}: {w}x{h}")
+        print(f"  {name}: {dw}x{dh}")
 
     c_parts.append("const lv_img_dsc_t *eb_digits[10] = {")
     for d in range(10):

@@ -10,6 +10,7 @@ LV_IMG_DECLARE(jeff_stand);
 LV_IMG_DECLARE(jeff_walk);
 LV_IMG_DECLARE(poo_stand);
 LV_IMG_DECLARE(poo_walk);
+LV_IMG_DECLARE(ness_sleep);
 
 #define SPRITE_SCALE 4
 #define SPRITE_W 64
