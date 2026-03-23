@@ -460,6 +460,64 @@ extern const lv_img_dsc_t *shutter_frames[{num_frames}];
     print(f"\nGenerated shutter.c/h ({num_frames} frames at {screen_w}x{screen_h})")
 
 
+def generate_presents():
+    """Generate present box sprites for BT profile indicators."""
+    present_scale = 2
+
+    c_parts = ['#include <lvgl.h>', '#include "presents.h"', ""]
+    all_names = []
+
+    for name, filename in [("present_closed", "present-tiny.gif"),
+                           ("present_open", "present-tiny-open.gif")]:
+        img = Image.open(os.path.join(SRC_DIR, filename)).convert("RGBA")
+        _, _, _, a = img.split()
+        bbox = a.getbbox()
+        content = img.crop(bbox)
+        cw, ch = content.size
+
+        scaled = content.resize((cw * present_scale, ch * present_scale),
+                                Image.NEAREST)
+        scaled_a = a.crop(bbox).resize((cw * present_scale, ch * present_scale),
+                                       Image.NEAREST)
+
+        gray = scaled.convert("L")
+        mono_pil = gray.convert("1")
+
+        sw, sh = scaled.size
+        mono = []
+        for py in range(sh):
+            row = []
+            for px in range(sw):
+                if scaled_a.getpixel((px, py)) < 128:
+                    row.append(0)
+                else:
+                    row.append(0 if mono_pil.getpixel((px, py)) else 1)
+            mono.append(row)
+
+        c_parts.append(mono_to_lvgl_c(name, mono, sw, sh))
+        c_parts.append("")
+        save_preview(name, mono, sw, sh)
+        all_names.append(name)
+        print(f"  {name}: {sw}x{sh}")
+
+    with open(os.path.join(OUT_DIR, "presents.c"), "w") as f:
+        f.write("\n".join(c_parts) + "\n")
+
+    declares = "\n".join(f"LV_IMG_DECLARE({n});" for n in all_names)
+    pw = all_names and c_parts  # just need the last sw/sh
+    with open(os.path.join(OUT_DIR, "presents.h"), "w") as f:
+        f.write(
+            f"""#pragma once
+
+#include <lvgl.h>
+
+{declares}
+"""
+        )
+
+    print(f"\nGenerated presents.c/h")
+
+
 def main():
     print("=== Character sprites ===")
     generate_sprites()
@@ -467,6 +525,8 @@ def main():
     generate_digits()
     print("\n=== Camera shutter ===")
     generate_shutter()
+    print("\n=== BT profile presents ===")
+    generate_presents()
 
 
 if __name__ == "__main__":

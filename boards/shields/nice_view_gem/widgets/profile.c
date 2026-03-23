@@ -1,25 +1,19 @@
 #include <zephyr/kernel.h>
 #include "profile.h"
+#include "../assets/presents.h"
 
-LV_IMG_DECLARE(profiles);
+#define PROFILE_X 54
+#define PROFILE_Y 4
+#define PROFILE_SPACING 18
 
-static void draw_inactive_profiles(lv_obj_t *canvas, const struct status_state *state) {
+void draw_profile_status(lv_obj_t *canvas, const struct status_state *state) {
     lv_draw_img_dsc_t img_dsc;
     lv_draw_img_dsc_init(&img_dsc);
 
-    lv_canvas_draw_img(canvas, 85, 6, &profiles, &img_dsc);
-}
-
-static void draw_active_profile(lv_obj_t *canvas, const struct status_state *state) {
-    lv_draw_rect_dsc_t rect_white_dsc;
-    init_rect_dsc(&rect_white_dsc, LVGL_FOREGROUND);
-
-    int offset = state->active_profile_index * 10;
-
-    lv_canvas_draw_rect(canvas, 85 + offset, 6, 8, 8, &rect_white_dsc);
-}
-
-void draw_profile_status(lv_obj_t *canvas, const struct status_state *state) {
-    draw_inactive_profiles(canvas, state);
-    draw_active_profile(canvas, state);
+    for (int i = 0; i < 5; i++) {
+        int x = PROFILE_X + i * PROFILE_SPACING;
+        const lv_img_dsc_t *icon = (i == state->active_profile_index)
+            ? &present_open : &present_closed;
+        lv_canvas_draw_img(canvas, x, PROFILE_Y, icon, &img_dsc);
+    }
 }
