@@ -3,5 +3,6 @@
 
 LV_FONT_DECLARE(quinquefive_24);
 LV_FONT_DECLARE(quinquefive_8);
+LV_FONT_DECLARE(saturn_font_16);
 
 #endif

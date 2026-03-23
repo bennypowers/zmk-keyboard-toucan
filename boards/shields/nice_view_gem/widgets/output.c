@@ -9,8 +9,8 @@
 
 static void draw_status_text(lv_obj_t *canvas, const char *text) {
     lv_draw_label_dsc_t label_dsc;
-    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &quinquefive_8, LV_TEXT_ALIGN_LEFT);
-    lv_canvas_draw_text(canvas, STATUS_X, STATUS_Y, SCREEN_WIDTH - STATUS_X, &label_dsc, text);
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &saturn_font_16, LV_TEXT_ALIGN_LEFT);
+    lv_canvas_draw_text(canvas, STATUS_X, STATUS_Y, 80, &label_dsc, text);
 }
 
 void draw_output_status(lv_obj_t *canvas, const struct status_state *state) {
@@ -39,8 +39,8 @@ void draw_output_status(lv_obj_t *canvas, const struct status_state *state) {
 
 void draw_output_status(lv_obj_t *canvas, const struct status_state *state) {
     lv_draw_label_dsc_t label_dsc;
-    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &quinquefive_8, LV_TEXT_ALIGN_LEFT);
-    lv_canvas_draw_text(canvas, STATUS_X, STATUS_Y, SCREEN_WIDTH - STATUS_X, &label_dsc,
+    init_label_dsc(&label_dsc, LVGL_FOREGROUND, &saturn_font_16, LV_TEXT_ALIGN_LEFT);
+    lv_canvas_draw_text(canvas, STATUS_X, STATUS_Y, 80, &label_dsc,
                         state->connected ? "BLE" : "DISC");
 }
 
