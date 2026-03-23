@@ -203,61 +203,82 @@ extern const lv_img_dsc_t *layer_sprites[NUM_LAYER_SPRITES][2];
     print(f"\nGenerated sprites.c/h ({sprite_w}x{sprite_h})")
 
 
+def digit_tile_to_mono(img, x, y, dw, dh):
+    """Extract an 8x12 digit tile, remove white bg, dither at display scale."""
+    crop = img.crop((x, y, x + DIGIT_W, y + DIGIT_H))
+    for py in range(crop.height):
+        for px in range(crop.width):
+            r, g, b, a = crop.getpixel((px, py))
+            if r > 220 and g > 220 and b > 220:
+                crop.putpixel((px, py), (255, 255, 255, 0))
+
+    _, _, _, alpha = crop.split()
+    scaled = crop.resize((dw, dh), Image.NEAREST)
+    scaled_a = alpha.resize((dw, dh), Image.NEAREST)
+
+    gray = scaled.convert("L")
+    mono_pil = gray.convert("1")
+
+    mono = []
+    for py in range(dh):
+        row_data = []
+        for px in range(dw):
+            if scaled_a.getpixel((px, py)) < 128:
+                row_data.append(0)
+            else:
+                row_data.append(0 if mono_pil.getpixel((px, py)) else 1)
+        mono.append(row_data)
+    return mono
+
+
 def generate_digits():
-    """Generate rolling counter digit font C arrays with dithered shading."""
+    """Generate rolling counter digit tiles with transition frames."""
     numbers_path = os.path.join(SRC_DIR, NUMBERS_FILE)
     img = Image.open(numbers_path).convert("RGBA")
-    bg = img.getpixel((0, 0))[:3]
 
     dw = DIGIT_W * DIGIT_SCALE
     dh = DIGIT_H * DIGIT_SCALE
+    tiles_per_transition = DIGIT_STRIDE_X // DIGIT_W  # 4
 
     c_parts = ['#include <lvgl.h>', '#include "eb_digits.h"', ""]
     all_names = []
 
+    # Extract all tiles: for each digit 0-9, extract 4 tiles
+    # tile 0 = clean digit N
+    # tile 1-3 = transition frames scrolling from N toward N+1
     for d in range(10):
         col = d % DIGITS_PER_ROW
         row = d // DIGITS_PER_ROW
-        x = col * DIGIT_STRIDE_X
-        y = row * DIGIT_STRIDE_Y
+        base_x = col * DIGIT_STRIDE_X
+        base_y = row * DIGIT_STRIDE_Y
 
-        crop = img.crop((x, y, x + DIGIT_W, y + DIGIT_H))
-        # BG is (240,240,240) white. Make it transparent.
-        # Keep all other colors for dithering.
-        for py in range(crop.height):
-            for px in range(crop.width):
-                r, g, b, a = crop.getpixel((px, py))
-                if r > 220 and g > 220 and b > 220:
-                    crop.putpixel((px, py), (255, 255, 255, 0))
+        for t in range(tiles_per_transition):
+            x = base_x + t * DIGIT_W
+            name = f"eb_tile_{d}_{t}"
+            mono = digit_tile_to_mono(img, x, base_y, dw, dh)
+            c_parts.append(mono_to_lvgl_c(name, mono, dw, dh))
+            c_parts.append("")
+            all_names.append(name)
 
-        _, _, _, alpha = crop.split()
-        scaled = crop.resize((dw, dh), Image.NEAREST)
-        scaled_a = alpha.resize((dw, dh), Image.NEAREST)
+        # Save preview of clean digit only
+        mono = digit_tile_to_mono(img, base_x, base_y, dw, dh)
+        save_preview(f"eb_digit_{d}", mono, dw, dh)
+        print(f"  digit {d}: 4 tiles at {dw}x{dh}")
 
-        # Dither at display resolution
-        gray = scaled.convert("L")
-        mono_pil = gray.convert("1")
-
-        name = f"eb_digit_{d}"
-        mono = []
-        for py in range(dh):
-            row_data = []
-            for px in range(dw):
-                if scaled_a.getpixel((px, py)) < 128:
-                    row_data.append(0)
-                else:
-                    row_data.append(0 if mono_pil.getpixel((px, py)) else 1)
-            mono.append(row_data)
-
-        c_parts.append(mono_to_lvgl_c(name, mono, dw, dh))
-        c_parts.append("")
-        save_preview(name, mono, dw, dh)
-        all_names.append(name)
-        print(f"  {name}: {dw}x{dh}")
-
+    # Clean digit lookup (tile 0 of each group)
     c_parts.append("const lv_img_dsc_t *eb_digits[10] = {")
     for d in range(10):
-        c_parts.append(f"    &eb_digit_{d},")
+        c_parts.append(f"    &eb_tile_{d}_0,")
+    c_parts.append("};")
+    c_parts.append("")
+
+    # Full transition table: [digit][frame]
+    c_parts.append(
+        f"const lv_img_dsc_t *eb_roll[10][{tiles_per_transition}] = {{"
+    )
+    for d in range(10):
+        tiles = ", ".join(f"&eb_tile_{d}_{t}" for t in range(tiles_per_transition))
+        c_parts.append(f"    {{ {tiles} }},")
     c_parts.append("};")
     c_parts.append("")
 
@@ -275,12 +296,14 @@ def generate_digits():
 
 #define EB_DIGIT_W {dw}
 #define EB_DIGIT_H {dh}
+#define EB_ROLL_FRAMES {tiles_per_transition}
 
 extern const lv_img_dsc_t *eb_digits[10];
+extern const lv_img_dsc_t *eb_roll[10][{tiles_per_transition}];
 """
         )
 
-    print(f"\nGenerated eb_digits.c/h ({dw}x{dh} per digit)")
+    print(f"\nGenerated eb_digits.c/h ({dw}x{dh}, {tiles_per_transition} frames/digit)")
 
 
 def generate_saturn_words():

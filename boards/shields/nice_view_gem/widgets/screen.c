@@ -61,11 +61,37 @@ static uint32_t walk_period_ms(uint8_t wpm) {
     return 400; /* charging fallback */
 }
 
+#define ROLL_TICK_MS 67  /* EB updates every 4 frames at 60fps */
+
+static uint32_t walk_tick_counter;
+
 static void anim_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_screen *widget;
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) {
+        bool needs_redraw = false;
+
+        /* Walk animation: only advance every N roll ticks */
+        uint32_t walk_ms = walk_period_ms(widget->state.wpm);
+        uint32_t walk_interval = walk_ms / ROLL_TICK_MS;
+        if (walk_interval < 1) walk_interval = 1;
+
         if (character_is_walking(&widget->state)) {
-            lv_timer_set_period(anim_timer, walk_period_ms(widget->state.wpm));
+            walk_tick_counter++;
+            if (walk_tick_counter >= walk_interval) {
+                walk_tick_counter = 0;
+                needs_redraw = true;
+            }
+        } else {
+            walk_tick_counter = 0;
+        }
+
+        /* Roll battery digits toward actual values */
+        battery_roll_tick(widget->state.battery, widget->state.battery_p);
+        if (battery_rolling_active()) {
+            needs_redraw = true;
+        }
+
+        if (needs_redraw) {
             draw_screen(widget->obj, widget->cbuf, &widget->state);
         }
     }
@@ -73,7 +99,7 @@ static void anim_timer_cb(lv_timer_t *timer) {
 
 static void ensure_anim_timer(void) {
     if (!anim_timer) {
-        anim_timer = lv_timer_create(anim_timer_cb, 400, NULL);
+        anim_timer = lv_timer_create(anim_timer_cb, ROLL_TICK_MS, NULL);
     }
 }
 

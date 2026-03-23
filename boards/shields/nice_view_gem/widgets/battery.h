@@ -11,3 +11,5 @@ struct battery_status_state {
 };
 
 void draw_battery_status(lv_obj_t *canvas, const struct status_state *state);
+void battery_roll_tick(uint8_t target_l, uint8_t target_r);
+bool battery_rolling_active(void);
