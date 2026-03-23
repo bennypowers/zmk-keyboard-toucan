@@ -15,7 +15,6 @@ import os
 
 SCALE = 4
 DIGIT_SCALE = 2  # digits are smaller, scale 2x (-> 16x24 per digit)
-SATURN_SCALE = 1  # Mr. Saturn font is already a good size at 1x (12x20 per char)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(SCRIPT_DIR, "src")
@@ -32,7 +31,6 @@ WALK_OVERRIDES = {
 # --- Digit font ---
 
 NUMBERS_FILE = "numbers.png"
-SATURN_FONT_FILE = "saturn-font.png"
 DIGIT_W, DIGIT_H = 8, 12
 DIGIT_STRIDE_X, DIGIT_STRIDE_Y = 32, 16
 DIGITS_PER_ROW = 4
@@ -126,7 +124,9 @@ def save_preview(name, mono, w, h):
                 for dy in range(2):
                     for dx in range(2):
                         preview.putpixel((px * 2 + dx, py * 2 + dy), 0)
-    preview.save(os.path.join(SRC_DIR, f"{name}_preview.png"))
+    preview_dir = os.path.join(SRC_DIR, "previews")
+    os.makedirs(preview_dir, exist_ok=True)
+    preview.save(os.path.join(preview_dir, f"{name}.png"))
 
 
 def generate_sprites():
@@ -282,6 +282,30 @@ def generate_digits():
     c_parts.append("};")
     c_parts.append("")
 
+    # HP and PP label sprites
+    label_w = label_h = 0
+    for label_name, label_file in [("eb_hp_label", "hp-text.png"),
+                                    ("eb_pp_label", "pp-text.png")]:
+        label_path = os.path.join(SRC_DIR, label_file)
+        label_img = Image.open(label_path).convert("RGBA")
+        label_scaled = label_img.resize(
+            (label_img.width * DIGIT_SCALE, label_img.height * DIGIT_SCALE),
+            Image.NEAREST,
+        )
+        label_w, label_h = label_scaled.size
+        label_mono = []
+        for py in range(label_h):
+            row_data = []
+            for px in range(label_w):
+                r, g, b, a = label_scaled.getpixel((px, py))
+                row_data.append(1 if r > 128 else 0)
+            label_mono.append(row_data)
+        c_parts.append(mono_to_lvgl_c(label_name, label_mono, label_w, label_h))
+        c_parts.append("")
+        all_names.append(label_name)
+        save_preview(label_name, label_mono, label_w, label_h)
+        print(f"  {label_name}: {label_w}x{label_h}")
+
     with open(os.path.join(OUT_DIR, "eb_digits.c"), "w") as f:
         f.write("\n".join(c_parts) + "\n")
 
@@ -296,6 +320,8 @@ def generate_digits():
 
 #define EB_DIGIT_W {dw}
 #define EB_DIGIT_H {dh}
+#define EB_LABEL_W {label_w}
+#define EB_LABEL_H {label_h}
 #define EB_ROLL_FRAMES {tiles_per_transition}
 
 extern const lv_img_dsc_t *eb_digits[10];
@@ -306,92 +332,11 @@ extern const lv_img_dsc_t *eb_roll[10][{tiles_per_transition}];
     print(f"\nGenerated eb_digits.c/h ({dw}x{dh}, {tiles_per_transition} frames/digit)")
 
 
-def generate_saturn_words():
-    """Generate Mr. Saturn font status word sprites."""
-    font_path = os.path.join(SRC_DIR, SATURN_FONT_FILE)
-    img = Image.open(font_path).convert("RGBA")
-
-    sx0, sw, sh = 9, 12, 20
-    row2_y = 21
-
-    def get_char(idx, row=1):
-        y = 0 if row == 1 else row2_y
-        x = sx0 + idx * sw
-        return img.crop((x, y, x + sw, y + sh))
-
-    # Mr. Saturn character map (letters start at index 31 in row 1)
-    char_map = {}
-    for i, ch in enumerate("abcdefghijklmn"):
-        char_map[ch] = get_char(31 + i, 1)
-    for i, ch in enumerate("opqrstuvwxyz"):
-        char_map[ch] = get_char(i, 2)
-
-    words = {"saturn_ble": "ble", "saturn_usb": "usb", "saturn_disc": "disc",
-             "saturn_open": "open", "saturn_null": "null"}
-
-    c_parts = ['#include <lvgl.h>', '#include "saturn_status.h"', ""]
-    all_names = []
-
-    for name, word in words.items():
-        # Compose word image
-        word_img = Image.new("RGBA", (len(word) * sw, sh), (0, 0, 0, 0))
-        for i, ch in enumerate(word):
-            tile = char_map[ch]
-            # Copy only FG pixels (transparent bg)
-            for py in range(sh):
-                for px in range(sw):
-                    r, g, b, a = tile.getpixel((px, py))
-                    if r > 128:  # FG is (240,240,240)
-                        word_img.putpixel((i * sw + px, py), (r, g, b, 255))
-
-        # Convert to mono at SATURN_SCALE
-        scaled = word_img.resize(
-            (word_img.width * SATURN_SCALE, word_img.height * SATURN_SCALE),
-            Image.NEAREST,
-        )
-        _, _, _, sa = scaled.split()
-        w, h = scaled.size
-        mono = []
-        for y in range(h):
-            row = []
-            for x in range(w):
-                r, g, b, a = scaled.getpixel((x, y))
-                if a < 128:
-                    row.append(0)
-                else:
-                    row.append(1 if r > 128 else 0)
-            mono.append(row)
-
-        c_parts.append(mono_to_lvgl_c(name, mono, w, h))
-        c_parts.append("")
-        save_preview(name, mono, w, h)
-        all_names.append(name)
-        print(f"  {name} ({word}): {w}x{h}")
-
-    with open(os.path.join(OUT_DIR, "saturn_status.c"), "w") as f:
-        f.write("\n".join(c_parts) + "\n")
-
-    declares = "\n".join(f"LV_IMG_DECLARE({n});" for n in all_names)
-    with open(os.path.join(OUT_DIR, "saturn_status.h"), "w") as f:
-        f.write(
-            f"""#pragma once
-
-#include <lvgl.h>
-
-{declares}
-"""
-        )
-
-    print(f"\nGenerated saturn_status.c/h")
-
-
 def main():
     print("=== Character sprites ===")
     generate_sprites()
     print("\n=== Rolling counter digits ===")
     generate_digits()
-    print("\n=== Mr. Saturn status words ===")
-    generate_saturn_words()
 
 
 if __name__ == "__main__":

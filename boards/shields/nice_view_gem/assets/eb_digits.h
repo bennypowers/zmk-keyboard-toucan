@@ -42,9 +42,13 @@ LV_IMG_DECLARE(eb_tile_9_0);
 LV_IMG_DECLARE(eb_tile_9_1);
 LV_IMG_DECLARE(eb_tile_9_2);
 LV_IMG_DECLARE(eb_tile_9_3);
+LV_IMG_DECLARE(eb_hp_label);
+LV_IMG_DECLARE(eb_pp_label);
 
 #define EB_DIGIT_W 16
 #define EB_DIGIT_H 24
+#define EB_LABEL_W 26
+#define EB_LABEL_H 18
 #define EB_ROLL_FRAMES 4
 
 extern const lv_img_dsc_t *eb_digits[10];

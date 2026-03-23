@@ -3,7 +3,7 @@
 #include "../assets/sprites.h"
 
 #define SPRITE_X ((SCREEN_WIDTH - SPRITE_W) / 2)
-#define SPRITE_Y 22
+#define SPRITE_Y 30
 
 static uint8_t walk_frame;
 
