@@ -1,0 +1,82 @@
+diff --git a/app/include/zmk/ble.h b/app/include/zmk/ble.h
+index 92b2107..3311bef 100644
+--- a/app/include/zmk/ble.h
++++ b/app/include/zmk/ble.h
+@@ -28,6 +28,7 @@ int zmk_ble_prof_disconnect(uint8_t index);
+ 
+ int zmk_ble_active_profile_index(void);
+ int zmk_ble_profile_index(const bt_addr_le_t *addr);
++int zmk_ble_profile_index_for_conn(const struct bt_conn *conn);
+ bt_addr_le_t *zmk_ble_profile_address(uint8_t index);
+ 
+ bt_addr_le_t *zmk_ble_active_profile_addr(void);
+diff --git a/app/src/ble.c b/app/src/ble.c
+index 2611eee..5ecea5d 100644
+--- a/app/src/ble.c
++++ b/app/src/ble.c
+@@ -262,6 +262,34 @@ int zmk_ble_profile_index(const bt_addr_le_t *addr) {
+     return -ENODEV;
+ }
+ 
++int zmk_ble_profile_index_for_conn(const struct bt_conn *conn) {
++    const bt_addr_le_t *addr = bt_conn_get_dst(conn);
++    int idx = zmk_ble_profile_index(addr);
++    if (idx >= 0) {
++        return idx;
++    }
++
++    /* After host suspend/resume, bt_conn_get_dst may return an address form
++     * (RPA vs identity) that doesn't match the stored profile. Reverse-lookup:
++     * find which profile's stored address resolves to this connection. */
++    for (int i = 0; i < ZMK_BLE_PROFILE_COUNT; i++) {
++        if (!bt_addr_le_cmp(&profiles[i].peer, BT_ADDR_LE_ANY)) {
++            continue;
++        }
++        struct bt_conn *profile_conn =
++            bt_conn_lookup_addr_le(BT_ID_DEFAULT, &profiles[i].peer);
++        if (profile_conn != NULL) {
++            bool match = (profile_conn == conn);
++            bt_conn_unref(profile_conn);
++            if (match) {
++                return i;
++            }
++        }
++    }
++
++    return -ENODEV;
++}
++
+ bt_addr_le_t *zmk_ble_profile_address(uint8_t index) {
+     if (index >= ZMK_BLE_PROFILE_COUNT) {
+         return (bt_addr_le_t *)(BT_ADDR_LE_NONE);
+diff --git a/app/src/hog.c b/app/src/hog.c
+index c7d9b86..266e00c 100644
+--- a/app/src/hog.c
++++ b/app/src/hog.c
+@@ -131,7 +131,7 @@ static ssize_t write_hids_leds_report(struct bt_conn *conn, const struct bt_gatt
+     }
+ 
+     struct zmk_hid_led_report_body *report = (struct zmk_hid_led_report_body *)buf;
+-    int profile = zmk_ble_profile_index(bt_conn_get_dst(conn));
++    int profile = zmk_ble_profile_index_for_conn(conn);
+     if (profile < 0) {
+         return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+     }
+@@ -169,7 +169,7 @@ static ssize_t read_hids_mouse_input_report(struct bt_conn *conn, const struct b
+ static ssize_t read_hids_mouse_feature_report(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                               void *buf, uint16_t len, uint16_t offset) {
+ 
+-    int profile = zmk_ble_profile_index(bt_conn_get_dst(conn));
++    int profile = zmk_ble_profile_index_for_conn(conn);
+     if (profile < 0) {
+         LOG_DBG("   BT_ATT_ERR_UNLIKELY");
+         return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+@@ -204,7 +204,7 @@ static ssize_t write_hids_mouse_feature_report(struct bt_conn *conn,
+ 
+     struct zmk_hid_mouse_resolution_feature_report_body *report =
+         (struct zmk_hid_mouse_resolution_feature_report_body *)buf;
+-    int profile = zmk_ble_profile_index(bt_conn_get_dst(conn));
++    int profile = zmk_ble_profile_index_for_conn(conn);
+     if (profile < 0) {
+         return BT_GATT_ERR(BT_ATT_ERR_UNLIKELY);
+     }
